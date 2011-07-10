@@ -14,6 +14,8 @@ import os
 from subprocess import Popen
 from threading import Lock, Thread
 
+from serial import Serial
+
 __version__='1.5'
 
 class SettingsClass(object):
@@ -67,6 +69,11 @@ class PTmp(ProcessEvent):
         super(PTmp, self).__init__()
         self.lock = Lock()
 
+        if settings.LDD_PORT:
+            print "configuring serial"
+            self.serial = Serial(port=settings.LDD_PORT)
+            self.serial.open()
+
     def process_IN_CREATE(self, event):
         if os.path.basename(event.pathname).startswith('.#'):
             # backup file
@@ -82,7 +89,7 @@ class PTmp(ProcessEvent):
         if _ignore_file(event.pathname):
             return
 
-        def execute_command(event, lock):
+        def execute_command(event, lock, serial):
             # By default trying to acquire a lock is blocking
             # In this case it will create a queue of commands to run
             #
@@ -95,16 +102,24 @@ class PTmp(ProcessEvent):
                 # in this case we just want to not execute the command
                 return
             print "Modifying:", event.pathname
+            if settings.LDD_PORT:
+                serial.write("C")
             command = _find_command(event.pathname)
             if command:
                 if settings.VERBOSE:
                     print "Command: ",
                     print command
                 p = Popen(command, shell=True)
-                sts = os.waitpid(p.pid, 0)
+                pid, sts = os.waitpid(p.pid, 0)
+                if settings.LDD_PORT:
+                    if sts == 0:
+                        serial.write("A")
+                    else:
+                        serial.write("B")
             lock.release()
 
-        command_thread = Thread(target=execute_command, args=[event, self.lock])
+        command_thread = Thread(target=execute_command,
+                                args=[event, self.lock, self.serial])
         command_thread.start()
 
 
@@ -191,6 +206,7 @@ if __name__=='__main__':
     settings.IGNORE_EXTENSIONS = getattr(x, 'IGNORE_EXTENSIONS', tuple())
     settings.IGNORE_DIRECTORIES = getattr(x, 'IGNORE_DIRECTORIES', tuple())
     settings.RUN_ON_EVERY_EVENT = getattr(x, 'RUN_ON_EVERY_EVENT', False)
+    settings.LDD_PORT = getattr(x, 'LDD_PORT', False)
     actual_directories = configure_more(settings.DIRECTORIES)
     
     sys.exit(start(actual_directories))
