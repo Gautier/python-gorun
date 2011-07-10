@@ -16,7 +16,7 @@ from threading import Lock, Thread
 
 from serial import Serial
 
-__version__='1.5'
+__version__='1.6'
 
 class SettingsClass(object):
     VERBOSE = False
@@ -54,6 +54,8 @@ def _ignore_file(path):
         return True
     basename = os.path.basename(path)
     if basename.startswith('.#'):
+        return True
+    if basename.startswith('#') and basename.endswith('#'):
         return True
     if '.' in os.path.basename(path) and \
        basename.split('.')[-1] in settings.IGNORE_EXTENSIONS:
